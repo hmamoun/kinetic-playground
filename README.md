@@ -7,6 +7,7 @@ Interactive Streamlit playground for kinetic math and physics toys.
 - **Spirograph Studio**: animated Spirograph drawing with linked rotating objects, live pen color changes, motion controls, and JPG export.
 - **Galton Board Works**: falling-ball probability simulation with adjustable rows, bias, speed, colors, and histogram curve.
 - **Sealed Sand Art**: rotating sealed-glass sand-art simulator with liquid thickness, air bubbles, gravity scale, random sand grain weights, bubble buoyancy, and saved defaults.
+- **Fourier Transform Lab**: random-wave explorer that finds frequency components with FFT, shows formulas, and reconstructs the signal visually.
 
 ## Run locally
 
@@ -33,6 +34,7 @@ streamlit run app.py --server.port 8502
 app.py                          # Spirograph Studio home page
 pages/1_Galton_Board_Works.py   # Galton board simulation
 pages/2_Sealed_Sand_Art.py      # Sealed sand-art simulation
+pages/3_Fourier_Transform_Lab.py # Fourier transform visualizer
 requirements.txt                # Python dependencies
 ```
 
