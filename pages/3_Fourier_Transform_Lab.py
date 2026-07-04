@@ -99,6 +99,20 @@ def component_series(t: np.ndarray, selected: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
+def format_ingredient_list(ingredients: list[dict]) -> str:
+    return ", ".join(
+        f"{item['frequency_hz']} Hz (A={item['amplitude']:.2f}, φ={item['phase_rad']:.2f} rad)"
+        for item in ingredients
+    )
+
+
+def format_component_list(components: pd.DataFrame) -> str:
+    return ", ".join(
+        f"{row.frequency_hz:.0f} Hz (A={row.amplitude:.2f}, φ={row.phase_rad:.2f} rad)"
+        for row in components.itertuples(index=False)
+    )
+
+
 st.title("Fourier Transform Lab")
 
 with st.sidebar:
@@ -136,6 +150,11 @@ t, y, ingredients = make_random_wave(
 spectrum = analyze_wave(y, sample_rate)
 reconstruction, selected = reconstruct_from_components(t, spectrum, top_count)
 error = float(np.sqrt(np.mean((y - reconstruction) ** 2)))
+
+strongest = selected.iloc[0]
+ingredients_text = format_ingredient_list(ingredients)
+selected_text = format_component_list(selected)
+nyquist = sample_rate / 2
 
 tab_wave, tab_formula, tab_components = st.tabs(["Visual Lab", "Formulas", "Components"])
 
@@ -212,3 +231,113 @@ with tab_components:
         st.dataframe(true_df, width="stretch", hide_index=True)
 
     st.write("A clean random wave will show discovered components close to the hidden ingredients. More noise makes the spectrum fuzzier.")
+
+st.divider()
+st.header("How the math works, step by step")
+st.caption(
+    f"A plain-language walkthrough tied to the wave currently on screen — seed **{int(seed)}**, "
+    f"**{component_count}** hidden components, sample rate **{sample_rate} Hz**, duration **{duration} s**."
+)
+
+st.subheader("1. Build a wave out of simple waves")
+st.write(
+    "Every wave on this page starts as a sum of a few simple cosine waves. A cosine wave is just a smooth, "
+    "repeating up-and-down wiggle. Three numbers describe one completely:"
+)
+st.markdown(
+    "- **Frequency (f)** — how many wiggles happen every second, measured in Hz\n"
+    "- **Amplitude (A)** — how tall the wiggle is (its strength)\n"
+    "- **Phase (φ)** — where in its cycle the wiggle starts, i.e. a shift left or right in time"
+)
+st.write("Adding K of these wiggles together makes the random wave shown in the chart:")
+st.latex(r"x(t) = \sum_{k=1}^{K} A_k \cos(2\pi f_k t + \phi_k)")
+st.markdown(
+    f"For **seed {int(seed)}**, with the sidebar set to **{component_count}** hidden components and a max "
+    f"frequency of **{max_frequency} Hz**, the app rolled these K = {component_count} random ingredients "
+    f"(then stirred in noise level **{noise_level}**) and hid the recipe:"
+)
+st.code(ingredients_text, language=None)
+st.write("That hidden recipe is exactly the mystery the Fourier Transform has to reverse-engineer below.")
+
+st.subheader("2. Turn the wave into numbers a computer can use (sampling)")
+st.write(
+    "A computer can't store a perfectly smooth curve, so it takes snapshots of the wave's height at evenly "
+    "spaced moments in time. The **sample rate** is how many snapshots are taken per second, and **duration** "
+    "is how many seconds are recorded. Multiplying the two gives the total number of samples, N."
+)
+st.latex(r"N = \text{sample rate} \times \text{duration}")
+st.markdown(
+    f"On screen right now: N = **{sample_rate}** × **{duration}** = **{samples}** samples. That also caps the "
+    f"highest frequency the analysis can ever see — the Nyquist limit — at sample rate / 2 = **{nyquist:.0f} Hz**."
+)
+
+st.subheader("3. Ask \"how much of each frequency is hiding in there?\" — the Fourier Transform")
+st.write(
+    "This is the key trick. For every candidate frequency, the Discrete Fourier Transform (DFT) compares the "
+    "wave against a perfectly spinning reference wave at that frequency:"
+)
+st.latex(r"X_k = \sum_{n=0}^{N-1} x_n \, e^{-i 2\pi k n / N}")
+st.write(
+    "Picture the term e^{-i2\\pi kn/N} as an arrow spinning around a clock face, completing k full spins over "
+    "the whole recording. Each sample of the wave gives that arrow a little nudge. If the wave truly contains a "
+    "wiggle at frequency k, every nudge lands pointing roughly the same way, so the arrow ends up far from the "
+    "center. If frequency k is not really in the wave, the nudges point every which way and mostly cancel out, "
+    "leaving the arrow near the center. X_k is simply where that arrow ends up — a point with a real part and an "
+    "imaginary part."
+)
+st.markdown(
+    f"With N = **{samples}** samples on this run, the app computes X_k for every k from 0 up to N/2 = "
+    f"**{samples // 2}**, one candidate frequency at a time. The FFT (Fast Fourier Transform) is just a very "
+    "efficient shortcut for getting all of those X_k values at once instead of one by one."
+)
+
+st.subheader("4. Read the arrow: turn X_k back into amplitude and phase")
+st.write(
+    "Each X_k lands on a 2D plane (real axis, imaginary axis). How far it lands from the center says *how "
+    "strong* that frequency is, and the angle it points at says *where in its cycle* that frequency starts:"
+)
+st.latex(r"A_k = \frac{2\lvert X_k \rvert}{N}, \qquad \lvert X_k \rvert = \sqrt{\text{real}^2 + \text{imag}^2}")
+st.latex(r"\phi_k = \arg(X_k) = \operatorname{atan2}(\text{imag}, \text{real})")
+st.markdown(
+    f"On the current Frequency Spectrum chart, the tallest bar — the arrow that landed farthest from the "
+    f"center — sits at **{strongest.frequency_hz:.0f} Hz** with amplitude **A = {strongest.amplitude:.2f}** and "
+    f"phase **φ = {strongest.phase_rad:.2f} rad**. The 2/N scaling (2/{samples} here) just undoes the DFT's "
+    "internal bookkeeping so A_k comes back out in the same units as the original wave."
+)
+
+st.subheader("5. Keep only the loudest ingredients and rebuild the wave")
+st.write(
+    "The full spectrum usually has a little energy at almost every frequency, mostly from noise. To reconstruct "
+    "a clean approximation, the app sorts every frequency by amplitude, keeps only the top few (however many you "
+    "choose in the sidebar), and adds just those cosine waves back together using the same formula from step 1:"
+)
+st.latex(r"\hat{x}(t) = \sum_{k \,\in\, \text{top components}} A_k \cos(2\pi f_k t + \phi_k)")
+st.markdown(
+    f"You asked for the top **{top_count}** components. For this run, the FFT ranked these as strongest and "
+    "used them to build the orange 'reconstructed' line:"
+)
+st.code(selected_text, language=None)
+if top_count >= component_count:
+    st.write(
+        f"Since {top_count} ≥ the {component_count} hidden ingredients from step 1, this list should look very "
+        "close to the hidden recipe above (small differences come from noise and sampling)."
+    )
+else:
+    st.write(
+        f"Because only {top_count} of the {component_count} hidden ingredients were kept, the reconstruction is "
+        "missing some real components — increase 'Components to reconstruct' in the sidebar to recover them."
+    )
+
+st.subheader("6. Score the guess (reconstruction error)")
+st.write(
+    "To see how close the rebuilt wave is to the original, the app compares the two curves point by point using "
+    "the root-mean-square error (RMSE):"
+)
+st.latex(r"\text{error} = \sqrt{\frac{1}{N}\sum_{n=0}^{N-1} \left(x_n - \hat{x}_n\right)^2}")
+st.markdown(
+    f"For the wave on screen right now, that works out to **error = {error:.4f}**. Squaring every difference "
+    "makes it positive, so a spot where the reconstruction is too high doesn't cancel out a spot where it's too "
+    "low; averaging those squares gives a typical mismatch size; the square root brings the units back in line "
+    "with the original wave. Try lowering the noise slider or reconstructing with more components and watch this "
+    "number shrink."
+)
