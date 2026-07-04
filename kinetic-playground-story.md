@@ -1,31 +1,35 @@
 # The Box on My Desk, Rebuilt in Streamlit
 
-There's always a box on my desk. Not for work — for the other stuff. It's been there since I was a kid: a container that only ever grows, gets quietly recycled sometimes, but never "cleaned up" without my sign-off. Most of what ends up in it is physics-adjacent — things tied to gravity, light, magnets, kinetic energy that's stored up and waiting, you never quite know when or how it'll release. I'll admit I lean a little spiritual about it too: to me, spirituality is just physics with more unknowns than answers.
+I've kept a box on my desk since I was a kid. Not work stuff — the other stuff. It only grows. Sometimes I recycle a piece, but nobody touches it without my say-so.
 
-A few weeks ago I finally decided to deal with it. Not clean it out in the boring way — digitize it. Simulate the pieces in code, give the physical ones away, and let the box itself finally shrink. That plan became **Kinetic Playground**, a Streamlit app that's still very much in progress. Here's everywhere it's gotten to so far.
+Most of what's in there is physics-flavored. Gravity, light, magnets, things that store up energy and let it go on their own schedule. I'll admit I get a little spiritual about that. To me spirituality is just physics with more unknowns.
 
-## Page one: the spirograph that ate my afternoon
+A few weeks ago I decided to finally deal with the box. Digitize the pieces, give the real ones away, let the box actually shrink for once. That's how **Kinetic Playground** started. Still a work in progress. Here's what's in it so far.
 
-First build was a **Spirograph Studio** — animated gears drawing curves, with linked rotating objects, live pen-color changes mid-draw, and one-click JPG export. It started as "let me simulate one spirograph" and, predictably, spiraled (sorry) into multiple pieces, shapes, and color sets before I forced myself to stop and go finish the Jira ticket that was actually due that day.
+## Spirograph Studio
 
-## Page two: order out of chaos
+First page. Animated gears drawing curves, rotating objects linked together, pen color you can change mid-draw, export to JPG. I meant to build one spirograph. Instead I got shapes, colors, multiple linked pieces — and had to force myself to stop and go finish a Jira ticket that was due that day.
 
-Next morning, the first thing on my mind was the **Galton board** — that wall of pegs where dropped balls bounce randomly left or right and somehow still pile up into a clean bell curve. It's one of those things that's fascinated me forever: pure randomness at the ball level, pure order at the aggregate level. The page lets you adjust rows, bias, drop speed, and colors, and watches a live histogram converge in real time.
+## Galton Board Works
 
-## Page three: the sand art I own two of, physically
+Next morning I couldn't stop thinking about the Galton board. Balls drop through a wall of pegs, bounce randomly left or right, and somehow still pile up into a clean bell curve every time. Random at the ball level, ordered at the pile level. This page lets you tune rows, bias, speed, colors, and watch the histogram settle in real time.
 
-The third page is my favorite because it replaces something I actually own — twice. **Sealed Sand Art** simulates those circular sand-art toys people use as fidget/therapy pieces: colored sand grains, a set amount of liquid and air, adjustable gravity, per-grain weight differences, bubble buoyancy, and a seeded random initial state so every session starts from a reproducible mess. I'd wanted to buy a few of these as gifts for people who deal with the same restlessness I do — now I can just send a link instead of a package.
+## Sealed Sand Art
 
-## Page four: the Fourier obsession, twenty-some years running
+This one's personal — I own two of the real thing. Sand, liquid, air, and gravity settling into a new pattern every time you flip it. The app lets you set sand types, weight, bubbles, gravity, and a seed so a session can be reproduced exactly. I used to want to buy these as gifts for people who deal with the same restlessness I do. Now I just send a link.
 
-This one goes back furthest. On my first computer — a Sinclair Spectrum, age 12 — I was obsessed with sin and cos: how two waves with different phase and frequency stack into something beautiful. University Fourier analysis was the payoff of that obsession, and it hasn't worn off. **Fourier Transform Lab** builds a random signal from a handful of hidden sine components, runs an FFT to recover their frequencies, amplitudes, and phases, and reconstructs the waveform so you can watch the pieces add back up into the whole.
+## Fourier Transform Lab
 
-## Page five: no object at all, just your hands
+The oldest one. I was 12, on a Sinclair Spectrum, obsessed with how sin and cos waves stack into something new. Fourier analysis in university was the payoff of that obsession, and it never wore off. This page builds a random signal from hidden sine waves, runs an FFT to pull the frequencies back out, and shows the pieces adding back up into the whole.
 
-The newest page needed nothing from the box, because there was nothing physical to digitize — just a webcam and a hand. **Camera Games** turns your live camera feed into a real-time toy: point your index finger at the screen and a hand-tracking model reads the gesture, feeding your fingertip position into a small ripple simulation that distorts the video like water. Switch modes and the same feed gets mirrored into a spinning, symmetrical **kaleidoscope** instead. Snapshot button included, because some ripples are worth keeping. It's the first page where the "toy" is just you, moving in front of a camera — kinetic energy with no physical toy required.
+## Camera Games
 
-## So did the box get any lighter?
+The newest page didn't need anything from the box, because there was nothing to digitize — just a camera and a hand. Point your index finger at the screen, a hand-tracking model reads it, and your fingertip makes ripples across the video feed like it's water. Switch modes and the same feed spins into a kaleidoscope instead. There's a snapshot button too. First page where the toy is just you.
 
-Honestly — no, and I've made my peace with that. I started this thinking digitizing the collection would let me finally let go of it: fewer boxes, less clutter, a tidy desk. Five pages in, what actually happened is the opposite. Building each simulation made me pay closer attention to the real thing it came from — the actual weight of the sand, the actual click of the spirograph gears — and that made we want to keep the box, not empty it. I do give pieces away now, when I duplicate one in code first. But the box itself isn't going anywhere. It's still there, still growing, still not fully cleaned up without my sign-off.
+## So, is the box any lighter?
 
-*— Kinetic Playground is open source and still growing. Built with Streamlit, HTML5 canvas, MediaPipe hand-tracking, and numpy/FFT under the hood.*
+No. I started this to get rid of it. Instead, building each simulation made me pay more attention to the real object it came from — the actual weight of the sand, the actual click of spirograph gears. That made me want to keep the box more, not less. I do give pieces away now, once I've copied them into code. But the box itself isn't going anywhere.
+
+*— Kinetic Playground is open source and still growing. Built with Streamlit, HTML5 canvas, MediaPipe hand-tracking, and numpy/FFT.*
+
+**P.S.** — this app keeps changing shape, so whatever's written above may already be a step behind. For the current version: [kinetic-playground.streamlit.app](https://kinetic-playground.streamlit.app/).

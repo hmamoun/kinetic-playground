@@ -20,10 +20,13 @@ def build_camera_view() -> str:
               <select id="effect-select">
                 <option value="water">Water Rippler</option>
                 <option value="kaleidoscope">Kaleidoscope</option>
+                <option value="count">Object Counter</option>
               </select>
             </label>
             <button id="snapshot-button" type="button" disabled>Save Snapshot</button>
           </div>
+
+          <p id="effect-description" class="effect-description"></p>
 
           <div class="stage">
             <video id="camera-feed" autoplay playsinline muted></video>
@@ -33,6 +36,8 @@ def build_camera_view() -> str:
               <p id="error-message" class="error"></p>
             </div>
           </div>
+
+          <div id="count-display" class="count-display">Objects in view: <span id="count-value">0</span></div>
 
           <div class="status-bar">
             <span id="os-status" class="pill">Detecting OS...</span>
@@ -110,6 +115,14 @@ def build_camera_view() -> str:
             cursor: not-allowed;
           }
 
+          .effect-description {
+            width: min(100%, 720px);
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #475467;
+          }
+
           .stage {
             position: relative;
             width: min(100%, 720px);
@@ -177,6 +190,29 @@ def build_camera_view() -> str:
             color: #ffb4a8;
             font-size: 13px;
           }
+
+          .count-display {
+            display: none;
+            width: min(100%, 720px);
+            text-align: center;
+            padding: 10px 16px;
+            border-radius: 8px;
+            background: rgba(23, 32, 51, .06);
+            border: 1px solid rgba(23, 32, 51, .14);
+            font-size: 15px;
+            font-weight: 600;
+            color: #172033;
+          }
+
+          .count-display.visible {
+            display: block;
+          }
+
+          .count-display span {
+            font-size: 22px;
+            font-weight: 800;
+            color: #b45309;
+          }
         </style>
 
         <script>
@@ -192,6 +228,22 @@ def build_camera_view() -> str:
             const placeholder = document.getElementById("placeholder");
             const effectSelect = document.getElementById("effect-select");
             const snapshotButton = document.getElementById("snapshot-button");
+            const countDisplay = document.getElementById("count-display");
+            const countValue = document.getElementById("count-value");
+            const effectDescription = document.getElementById("effect-description");
+
+            const EFFECT_INFO = {
+              water: "Distorts the feed with a real water-height ripple simulation. Point your index " +
+                "finger at the camera to drop new ripples wherever you're pointing.",
+              kaleidoscope: "Slices the mirrored feed into wedges and repeats them around the center " +
+                "with a slow rotation, like looking through a real kaleidoscope.",
+              count: "Looks for small, distinctly colored or dark shapes held up to the camera — like " +
+                "a handful of pens or pencils — and counts how many separate ones it finds, printing " +
+                "the total below the frame. It's a plain color heuristic, not an object classifier, so " +
+                "it works best against a plain background, and items that are touching but share a very " +
+                "similar color (e.g. two shades of red pressed together) may be counted as one — fanning " +
+                "them out a little helps.",
+            };
 
             let activeStream = null;
             let handLandmarker = null;
@@ -218,6 +270,13 @@ def build_camera_view() -> str:
             let kaleidoscopeBase = null;
             let kaleidoscopeWedge = null;
             let kaleidoscopeRotation = 0;
+
+            const COUNT_W = 160;
+            const COUNT_H = 120;
+            const countWorkCanvas = document.createElement("canvas");
+            countWorkCanvas.width = COUNT_W;
+            countWorkCanvas.height = COUNT_H;
+            const countWorkCtx = countWorkCanvas.getContext("2d", { willReadFrequently: true });
 
             function detectOS() {
               const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
@@ -515,6 +574,192 @@ def build_camera_view() -> str:
               }
             }
 
+            function rgbToHsv(r, g, b) {
+              const rn = r / 255;
+              const gn = g / 255;
+              const bn = b / 255;
+              const max = Math.max(rn, gn, bn);
+              const min = Math.min(rn, gn, bn);
+              const delta = max - min;
+              let h = 0;
+              if (delta !== 0) {
+                if (max === rn) h = ((gn - bn) / delta) % 6;
+                else if (max === gn) h = (bn - rn) / delta + 2;
+                else h = (rn - gn) / delta + 4;
+                h *= 60;
+                if (h < 0) h += 360;
+              }
+              const s = max === 0 ? 0 : delta / max;
+              return { h, s, v: max };
+            }
+
+            function isCountablePixel(r, g, b) {
+              const { h, s, v } = rgbToHsv(r, g, b);
+              if (s < 0.18 && v > 0.5) return false; // flat wall/ceiling background
+              if (v > 0.85 && s < 0.35) return false; // overexposed background
+              if (h >= 8 && h <= 40 && s >= 0.12 && s <= 0.6 && v >= 0.35) return false; // skin tone
+              return true; // vivid color or dark object
+            }
+
+            function countBlobs() {
+              countWorkCtx.save();
+              countWorkCtx.translate(COUNT_W, 0);
+              countWorkCtx.scale(-1, 1);
+              const mapping = computeCoverMapping(video.videoWidth, video.videoHeight, COUNT_W, COUNT_H);
+              countWorkCtx.drawImage(
+                video,
+                mapping.offsetX,
+                mapping.offsetY,
+                video.videoWidth * mapping.scale,
+                video.videoHeight * mapping.scale
+              );
+              countWorkCtx.restore();
+
+              const { data } = countWorkCtx.getImageData(0, 0, COUNT_W, COUNT_H);
+              const total = COUNT_W * COUNT_H;
+              const mask = new Uint8Array(total);
+              const hueArr = new Float32Array(total);
+              const satArr = new Float32Array(total);
+              const valArr = new Float32Array(total);
+              for (let i = 0; i < total; i += 1) {
+                const o = i * 4;
+                const { h, s, v } = rgbToHsv(data[o], data[o + 1], data[o + 2]);
+                hueArr[i] = h;
+                satArr[i] = s;
+                valArr[i] = v;
+                mask[i] = isCountablePixel(data[o], data[o + 1], data[o + 2]) ? 1 : 0;
+              }
+
+              const cleaned = new Uint8Array(total);
+              for (let y = 1; y < COUNT_H - 1; y += 1) {
+                for (let x = 1; x < COUNT_W - 1; x += 1) {
+                  const idx = y * COUNT_W + x;
+                  if (!mask[idx]) continue;
+                  let neighbors = 0;
+                  for (let dy = -1; dy <= 1; dy += 1) {
+                    for (let dx = -1; dx <= 1; dx += 1) {
+                      if (dx === 0 && dy === 0) continue;
+                      if (mask[idx + dy * COUNT_W + dx]) neighbors += 1;
+                    }
+                  }
+                  cleaned[idx] = neighbors >= 3 ? 1 : 0;
+                }
+              }
+
+              // Two pixels are only joined if they're both foreground AND close in color
+              // to the region's seed pixel. Plain foreground/background connectivity would
+              // fuse any objects that are physically touching (e.g. a bundle of held pens)
+              // into a single blob regardless of how different their colors are.
+              function colorDistance(i, j) {
+                const s1 = satArr[i];
+                const s2 = satArr[j];
+                const dv = Math.abs(valArr[i] - valArr[j]);
+                const ds = Math.abs(s1 - s2);
+                if (s1 < 0.16 || s2 < 0.16) return dv + ds * 0.5;
+                let dh = Math.abs(hueArr[i] - hueArr[j]);
+                if (dh > 180) dh = 360 - dh;
+                return (dh / 180) * 0.85 + ds * 0.3 + dv * 0.25;
+              }
+
+              const visited = new Uint8Array(total);
+              const boxes = [];
+              const stack = [];
+              const minArea = 18;
+              const maxArea = total * 0.14;
+              const colorThreshold = 0.42;
+
+              for (let y = 0; y < COUNT_H; y += 1) {
+                for (let x = 0; x < COUNT_W; x += 1) {
+                  const start = y * COUNT_W + x;
+                  if (!cleaned[start] || visited[start]) continue;
+
+                  stack.length = 0;
+                  stack.push(start);
+                  visited[start] = 1;
+                  let area = 0;
+                  let minX = x;
+                  let maxX = x;
+                  let minY = y;
+                  let maxY = y;
+                  let touchesBorder = false;
+
+                  while (stack.length) {
+                    const idx = stack.pop();
+                    const py = Math.floor(idx / COUNT_W);
+                    const px = idx % COUNT_W;
+                    area += 1;
+                    if (px === 0 || px === COUNT_W - 1 || py === 0 || py === COUNT_H - 1) touchesBorder = true;
+                    if (px < minX) minX = px;
+                    if (px > maxX) maxX = px;
+                    if (py < minY) minY = py;
+                    if (py > maxY) maxY = py;
+
+                    const candidates = [
+                      { n: idx - 1, nx: px - 1 },
+                      { n: idx + 1, nx: px + 1 },
+                      { n: idx - COUNT_W, nx: px },
+                      { n: idx + COUNT_W, nx: px },
+                    ];
+                    for (const { n, nx } of candidates) {
+                      if (n < 0 || n >= total || nx < 0 || nx >= COUNT_W) continue;
+                      if (cleaned[n] && !visited[n] && colorDistance(start, n) <= colorThreshold) {
+                        visited[n] = 1;
+                        stack.push(n);
+                      }
+                    }
+                  }
+
+                  if (!touchesBorder && area >= minArea && area <= maxArea) {
+                    boxes.push({ minX, maxX, minY, maxY });
+                  }
+                }
+              }
+
+              return boxes;
+            }
+
+            function renderObjectCounter() {
+              const width = fxCanvas.clientWidth;
+              const height = fxCanvas.clientHeight;
+              fxCtx.clearRect(0, 0, width, height);
+
+              const mapping = computeCoverMapping(video.videoWidth, video.videoHeight, width, height);
+              fxCtx.save();
+              fxCtx.translate(width, 0);
+              fxCtx.scale(-1, 1);
+              fxCtx.drawImage(
+                video,
+                mapping.offsetX,
+                mapping.offsetY,
+                video.videoWidth * mapping.scale,
+                video.videoHeight * mapping.scale
+              );
+              fxCtx.restore();
+
+              const boxes = countBlobs();
+              const scaleX = width / COUNT_W;
+              const scaleY = height / COUNT_H;
+
+              fxCtx.lineWidth = 2;
+              fxCtx.strokeStyle = "#f59e0b";
+              fxCtx.fillStyle = "#f59e0b";
+              fxCtx.font = "700 13px Inter, sans-serif";
+
+              boxes.forEach((box, index) => {
+                const x = box.minX * scaleX;
+                const y = box.minY * scaleY;
+                const w = (box.maxX - box.minX + 1) * scaleX;
+                const h = (box.maxY - box.minY + 1) * scaleY;
+                fxCtx.strokeRect(x, y, w, h);
+                fxCtx.fillText(String(index + 1), x + 4, Math.max(12, y + 14));
+              });
+
+              countValue.textContent = String(boxes.length);
+              fxStatus.textContent = boxes.length > 0
+                ? `${boxes.length} object${boxes.length === 1 ? "" : "s"} detected`
+                : "Hold objects up to the camera to count them";
+            }
+
             function renderLoop() {
               if (video.readyState >= 2) {
                 if (currentEffect === "water") {
@@ -526,6 +771,8 @@ def build_camera_view() -> str:
                   renderWaterRippler();
                 } else if (currentEffect === "kaleidoscope") {
                   renderKaleidoscope();
+                } else if (currentEffect === "count") {
+                  renderObjectCounter();
                 }
               }
               renderAnimationId = requestAnimationFrame(renderLoop);
@@ -534,13 +781,18 @@ def build_camera_view() -> str:
             function applyEffect(effect) {
               currentEffect = effect;
               pointerNorm = null;
+              countDisplay.classList.toggle("visible", effect === "count");
+              effectDescription.textContent = EFFECT_INFO[effect] || "";
               if (effect === "water") {
                 loadHandModel();
                 fxStatus.textContent = handLandmarker
                   ? "Point at the camera to make ripples"
                   : "Loading hand-tracking model...";
-              } else {
+              } else if (effect === "kaleidoscope") {
                 fxStatus.textContent = "Kaleidoscope active";
+              } else {
+                countValue.textContent = "0";
+                fxStatus.textContent = "Hold objects up to the camera to count them";
               }
             }
 
@@ -611,6 +863,7 @@ def build_camera_view() -> str:
             }
 
             osStatus.textContent = `Detected OS: ${detectOS()}`;
+            effectDescription.textContent = EFFECT_INFO[currentEffect] || "";
             checkForCamera();
             enableButton.addEventListener("click", enableCamera);
             effectSelect.addEventListener("change", (event) => applyEffect(event.target.value));
@@ -638,9 +891,8 @@ def render_camera_view(html_doc: str, height: int) -> None:
 
 st.title("Camera Games")
 st.caption(
-    "Pick an effect, then enable your camera. Water Rippler distorts the feed with a live ripple "
-    "simulation you trigger by pointing your index finger at the screen. Kaleidoscope mirrors the "
-    "feed into a spinning symmetrical pattern. Use Save Snapshot to download the current frame."
+    "Pick an effect below to see what it does, then enable your camera. Use Save Snapshot any time "
+    "to download the current frame."
 )
 
 render_camera_view(build_camera_view(), height=660)
