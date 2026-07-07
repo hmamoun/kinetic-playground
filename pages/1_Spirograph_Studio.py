@@ -68,7 +68,7 @@ with st.sidebar:
     pen_offset = st.slider("Pen hole distance", 4, 180, 96, 1)
 
     st.header("Linked objects")
-    object_count = st.slider("Rotating objects", 2, 8, 2)
+    object_count = st.slider("Rotating objects", 1, 8, 2)
     object_scale = st.slider("Object size decay", 45, 95, 72) / 100
     attachment_spread = st.slider("Random attach spread", 20, 100, 76) / 100
     relation_speed = st.slider("Linked object spin", 25, 220, 100) / 100
@@ -88,7 +88,6 @@ with st.sidebar:
     rotation_speed = st.slider("Rotation speed", 5, 200, 100, 5) / 100
     samples_per_frame = st.slider("Stroke smoothness", 1, 12, 5)
     detail = st.slider("Detail", 600, 9000, 4200, 100)
-    loop_drawing = st.toggle("Loop drawing", value=True)
 
 
 inner_radius = clamp(inner_radius, 8, max(8, outer_radius - 8))
@@ -128,7 +127,6 @@ config = {
     "samplesPerFrame": samples_per_frame,
     "frameAdvance": 0.018 * 5 * rotation_speed,
     "maxAngle": detail * 0.018,
-    "loopDrawing": loop_drawing,
     "scale": scale,
     "startHue": 174,
     "rainbowSpeed": 0.8,

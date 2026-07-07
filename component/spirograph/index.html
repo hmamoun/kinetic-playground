@@ -572,8 +572,7 @@
         step += 1;
         tCursor += segmentStep;
         if (tCursor >= config.maxAngle) {
-          if (config.loopDrawing) resetDrawing();
-          else running = false;
+          running = false;
         }
       }
 
@@ -593,7 +592,7 @@
     config = newConfig;
     guideShape = config.guideShape;
     movingShape = config.movingShape;
-    objectCount = Math.max(2, config.objectCount);
+    objectCount = Math.max(1, config.objectCount);
 
     stage.style.setProperty("--canvas-size", `${config.canvasSize}px`);
     stage.style.setProperty("--background", config.backgroundColor);
