@@ -50,6 +50,13 @@ PAGES = [
         "Turn your webcam into a toy: live water-ripple distortion, a spinning "
         "kaleidoscope, or a color-based object counter.",
     ),
+    (
+        "pages/5_Machine_Learning_Lab.py",
+        "Machine Learning Lab",
+        "🧠",
+        "Watch a tiny neural network learn a 2D classification problem live, its "
+        "decision boundary reshaping itself epoch by epoch.",
+    ),
 ]
 
 for path, label, icon, description in PAGES:
