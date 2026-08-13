@@ -1,6 +1,8 @@
 import io
+import json
 import random
 import wave
+from textwrap import dedent
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -219,6 +221,257 @@ def render_sand_plate(mode_weights: list[tuple[int, int, float]], seed: int, num
     return fig
 
 
+def build_wave_lab_view(payload: dict) -> str:
+    payload_json = json.dumps(payload).replace("<", "\\u003c")
+
+    return dedent(
+        """
+        <div class="wavelab-shell">
+          <div class="wavelab-controls">
+            <button id="wl-play-pause" type="button">Pause</button>
+            <button id="wl-restart" type="button">Restart</button>
+            <span id="wl-status" class="wavelab-status"></span>
+          </div>
+
+          <div class="wavelab-main">
+            <div class="wavelab-label">Main Wave</div>
+            <canvas id="wl-main-canvas"></canvas>
+          </div>
+
+          <div class="wavelab-grid" id="wl-grid"></div>
+        </div>
+
+        <script id="wl-data" type="application/json">%s</script>
+
+        <style>
+          .wavelab-shell {
+            width: 100%%;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+
+          .wavelab-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+          }
+
+          .wavelab-controls button {
+            padding: 6px 16px;
+            border-radius: 999px;
+            border: 1px solid rgba(23, 32, 51, .18);
+            background: #172033;
+            color: #f4f6fb;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+          }
+
+          .wavelab-controls button:hover {
+            background: #232f47;
+          }
+
+          .wavelab-status {
+            font-size: 13px;
+            color: #475467;
+          }
+
+          .wavelab-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #475467;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+          }
+
+          .wavelab-main {
+            border: 1px solid rgba(23, 32, 51, .14);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, .6);
+            padding: 10px 14px;
+            margin-bottom: 14px;
+          }
+
+          .wavelab-main canvas {
+            width: 100%%;
+            height: 160px;
+            display: block;
+          }
+
+          .wavelab-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+          }
+
+          .wavelab-mini {
+            border: 1px solid rgba(23, 32, 51, .14);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, .6);
+            padding: 8px 12px;
+          }
+
+          .wavelab-mini canvas {
+            width: 100%%;
+            height: 100px;
+            display: block;
+          }
+        </style>
+
+        <script>
+          (() => {
+            const payload = JSON.parse(document.getElementById("wl-data").textContent);
+            const t = payload.t;
+            const main = payload.main;
+            const components = payload.components;
+            const totalPoints = t.length;
+
+            const playPauseButton = document.getElementById("wl-play-pause");
+            const restartButton = document.getElementById("wl-restart");
+            const statusLabel = document.getElementById("wl-status");
+            const mainCanvas = document.getElementById("wl-main-canvas");
+            const grid = document.getElementById("wl-grid");
+
+            const COLORS = [
+              "#136f63", "#b45309", "#7c3aed", "#dc2626", "#2563eb",
+              "#059669", "#d97706", "#db2777", "#0891b2", "#65a30d",
+              "#9333ea", "#e11d48",
+            ];
+
+            const componentCanvases = components.map((component) => {
+              const wrap = document.createElement("div");
+              wrap.className = "wavelab-mini";
+              const label = document.createElement("div");
+              label.className = "wavelab-label";
+              label.textContent = component.label;
+              const canvas = document.createElement("canvas");
+              wrap.appendChild(label);
+              wrap.appendChild(canvas);
+              grid.appendChild(wrap);
+              return canvas;
+            });
+
+            let running = true;
+            let revealIndex = 0;
+            let animationId = null;
+            const pointsPerFrame = Math.max(1, Math.round(totalPoints / 240));
+
+            function setupCanvas(canvas) {
+              const rect = canvas.getBoundingClientRect();
+              const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+              const width = Math.max(1, Math.round(rect.width * dpr));
+              const height = Math.max(1, Math.round(rect.height * dpr));
+              if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+              }
+              const ctx = canvas.getContext("2d");
+              ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+              return { ctx, width: rect.width, height: rect.height };
+            }
+
+            function drawSeries(canvas, values, color, revealCount) {
+              const { ctx, width, height } = setupCanvas(canvas);
+              ctx.clearRect(0, 0, width, height);
+
+              let maxAbs = 0;
+              for (let i = 0; i < values.length; i += 1) {
+                const magnitude = Math.abs(values[i]);
+                if (magnitude > maxAbs) maxAbs = magnitude;
+              }
+              const range = (maxAbs || 1) * 1.15;
+              const midY = height / 2;
+
+              ctx.strokeStyle = "rgba(23, 32, 51, .18)";
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(0, midY);
+              ctx.lineTo(width, midY);
+              ctx.stroke();
+
+              const count = Math.max(0, Math.min(revealCount, values.length));
+              if (count > 1) {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.lineJoin = "round";
+                ctx.beginPath();
+                for (let i = 0; i < count; i += 1) {
+                  const x = (i / (values.length - 1)) * width;
+                  const y = midY - (values[i] / range) * midY;
+                  if (i === 0) ctx.moveTo(x, y);
+                  else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+
+                const lastX = ((count - 1) / (values.length - 1)) * width;
+                const lastY = midY - (values[count - 1] / range) * midY;
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+
+            function renderFrame() {
+              drawSeries(mainCanvas, main, "#172033", revealIndex);
+              components.forEach((component, index) => {
+                drawSeries(componentCanvases[index], component.values, COLORS[index %% COLORS.length], revealIndex);
+              });
+              statusLabel.textContent = `${Math.min(revealIndex, totalPoints)} / ${totalPoints} samples`;
+            }
+
+            function tick() {
+              if (running) {
+                revealIndex += pointsPerFrame;
+                if (revealIndex >= totalPoints) {
+                  revealIndex = totalPoints;
+                  running = false;
+                  playPauseButton.textContent = "Play";
+                }
+                renderFrame();
+              }
+              animationId = requestAnimationFrame(tick);
+            }
+
+            playPauseButton.addEventListener("click", () => {
+              if (!running && revealIndex >= totalPoints) {
+                revealIndex = 0;
+              }
+              running = !running;
+              playPauseButton.textContent = running ? "Pause" : "Play";
+            });
+
+            restartButton.addEventListener("click", () => {
+              revealIndex = 0;
+              running = true;
+              playPauseButton.textContent = "Pause";
+              renderFrame();
+            });
+
+            window.addEventListener("resize", renderFrame);
+            renderFrame();
+            tick();
+
+            window.addEventListener("pagehide", () => {
+              if (animationId) cancelAnimationFrame(animationId);
+            });
+          })();
+        </script>
+        """
+    ) % payload_json
+
+
+def render_wave_lab_view(html_doc: str, height: int) -> None:
+    if hasattr(st, "iframe"):
+        st.iframe(html_doc, height=height, width="stretch")
+        return
+
+    import streamlit.components.v1 as components
+
+    components.html(html_doc, height=height, scrolling=False)
+
+
 def format_ingredient_list(ingredients: list[dict]) -> str:
     return ", ".join(
         f"{item['frequency_hz']} Hz (A={item['amplitude']:.2f}, φ={item['phase_rad']:.2f} rad)"
@@ -279,6 +532,24 @@ nyquist = sample_rate / 2
 tab_wave, tab_formula, tab_components = st.tabs(["Visual Lab", "Formulas", "Components"])
 
 with tab_wave:
+    st.subheader("Live Wave Playback")
+    st.caption(
+        "The random wave and each of its discovered components sweep across their own chart in sync. "
+        "Use Pause/Play or Restart to control the animation."
+    )
+    components_df = component_series(t, selected)
+    component_columns = [column for column in components_df.columns if column != "t"]
+    wave_lab_payload = {
+        "t": t.tolist(),
+        "main": y.tolist(),
+        "components": [
+            {"label": column, "values": components_df[column].tolist()}
+            for column in component_columns
+        ],
+    }
+    grid_rows = -(-len(component_columns) // 4)
+    render_wave_lab_view(build_wave_lab_view(wave_lab_payload), height=320 + grid_rows * 150)
+
     left, right = st.columns([0.62, 0.38], vertical_alignment="top")
 
     with left:

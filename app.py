@@ -57,6 +57,13 @@ PAGES = [
         "A random self-reflection question at a time, with three answers spanning "
         "two extremes and a middle ground.",
     ),
+    (
+        "pages/5_Machine_Learning_Lab.py",
+        "Machine Learning Lab",
+        "🧠",
+        "Watch a tiny neural network learn a 2D classification problem live, its "
+        "decision boundary reshaping itself epoch by epoch.",
+    ),
 ]
 
 for path, label, icon, description in PAGES:
