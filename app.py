@@ -50,6 +50,13 @@ PAGES = [
         "Turn your webcam into a toy: live water-ripple distortion, a spinning "
         "kaleidoscope, or a color-based object counter.",
     ),
+    (
+        "pages/5_Know_Yourself.py",
+        "Know Yourself",
+        "🪞",
+        "A random self-reflection question at a time, with three answers spanning "
+        "two extremes and a middle ground.",
+    ),
 ]
 
 for path, label, icon, description in PAGES:

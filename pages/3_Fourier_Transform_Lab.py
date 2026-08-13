@@ -1,5 +1,8 @@
+import io
 import random
+import wave
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -99,6 +102,123 @@ def component_series(t: np.ndarray, selected: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
+def synthesize_tone(
+    frequency_hz: float,
+    amplitude: float,
+    phase_rad: float,
+    audible_hz: float,
+    duration: float = 1.5,
+    sample_rate: int = 44100,
+) -> bytes:
+    t = np.arange(int(duration * sample_rate)) / sample_rate
+    y = amplitude * np.cos(2 * np.pi * audible_hz * t + phase_rad)
+    fade = min(int(0.02 * sample_rate), len(y) // 2)
+    envelope = np.ones_like(y)
+    envelope[:fade] = np.linspace(0, 1, fade)
+    envelope[-fade:] = np.linspace(1, 0, fade)
+    y = y * envelope
+    pcm = np.clip(y * 32767 * 0.6, -32767, 32767).astype(np.int16)
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm.tobytes())
+    return buffer.getvalue()
+
+
+def synthesize_waveform(
+    y: np.ndarray,
+    sample_rate: int,
+    max_frequency: float,
+    target_duration: float = 2.0,
+) -> bytes:
+    speedup = max(800.0 / max(max_frequency, 1.0), 1.0)
+    playback_rate = max(int(sample_rate * speedup), 8000)
+
+    segment_duration = len(y) / playback_rate
+    repeats = max(1, int(np.ceil(target_duration / segment_duration)))
+    audio = np.tile(y, repeats)
+
+    max_abs = np.max(np.abs(audio))
+    if max_abs > 0:
+        audio = audio / max_abs
+
+    fade = min(int(0.02 * playback_rate), len(audio) // 2)
+    if fade > 0:
+        audio[:fade] *= np.linspace(0, 1, fade)
+        audio[-fade:] *= np.linspace(1, 0, fade)
+
+    pcm = np.clip(audio * 32767 * 0.6, -32767, 32767).astype(np.int16)
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(playback_rate)
+        wav_file.writeframes(pcm.tobytes())
+    return buffer.getvalue()
+
+
+def audible_frequency_for(frequency_hz: float, max_frequency: float) -> float:
+    ratio = frequency_hz / max_frequency if max_frequency > 0 else 0.0
+    return float(np.clip(110 + ratio * 770, 80, 1000))
+
+
+def frequency_to_plate_mode(frequency_hz: float, max_frequency: float) -> tuple[int, int]:
+    ratio = np.clip(frequency_hz / max(max_frequency, 1.0), 0.0, 1.0)
+    n = 1 + int(round(ratio * 6))
+    m = 1 + (int(round(frequency_hz)) * 3) % 6
+    if m == n:
+        m += 1
+    return m, n
+
+
+def chladni_height_field(mode_weights: list[tuple[int, int, float]], grid_size: int = 80) -> np.ndarray:
+    x = np.linspace(0, 1, grid_size)
+    xx, yy = np.meshgrid(x, x)
+    z = np.zeros_like(xx)
+    total = sum(abs(weight) for _, _, weight in mode_weights) or 1.0
+
+    for m, n, weight in mode_weights:
+        w = weight / total
+        z += w * (
+            np.cos(n * np.pi * xx) * np.cos(m * np.pi * yy)
+            - np.cos(m * np.pi * xx) * np.cos(n * np.pi * yy)
+        )
+
+    return z
+
+
+def render_sand_plate(mode_weights: list[tuple[int, int, float]], seed: int, num_grains: int = 1600):
+    z = chladni_height_field(mode_weights)
+    grid_size = z.shape[0]
+
+    density = 1.0 / (np.abs(z) + 0.06)
+    density = density / density.sum()
+
+    rng = np.random.default_rng(seed)
+    flat_choice = rng.choice(density.size, size=num_grains, p=density.ravel())
+    row, col = np.unravel_index(flat_choice, density.shape)
+    jitter = rng.uniform(-0.5, 0.5, size=(num_grains, 2)) / grid_size
+    grain_x = col / grid_size + jitter[:, 0]
+    grain_y = row / grid_size + jitter[:, 1]
+
+    fig, ax = plt.subplots(figsize=(2.0, 2.0), dpi=100)
+    fig.patch.set_facecolor("#1e1e1e")
+    ax.set_facecolor("#2b2b2b")
+    ax.scatter(grain_x, grain_y, s=1.5, c="#e8d8a8", linewidths=0)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_aspect("equal")
+    for spine in ax.spines.values():
+        spine.set_color("#888888")
+    return fig
+
+
 def format_ingredient_list(ingredients: list[dict]) -> str:
     return ", ".join(
         f"{item['frequency_hz']} Hz (A={item['amplitude']:.2f}, φ={item['phase_rad']:.2f} rad)"
@@ -162,11 +282,49 @@ with tab_wave:
     left, right = st.columns([0.62, 0.38], vertical_alignment="top")
 
     with left:
-        st.subheader("Random Wave")
+        chart_col, play_col, plate_col = st.columns([0.55, 0.15, 0.3], vertical_alignment="center")
+        with chart_col:
+            st.subheader("Random Wave")
+        with play_col:
+            if st.button("Play", key="play_random_wave"):
+                st.audio(
+                    synthesize_waveform(y, sample_rate, max_frequency),
+                    format="audio/wav",
+                    autoplay=True,
+                )
+        with plate_col:
+            random_wave_modes = [
+                (*frequency_to_plate_mode(item["frequency_hz"], max_frequency), item["amplitude"])
+                for item in ingredients
+            ]
+            st.pyplot(
+                render_sand_plate(random_wave_modes, seed=int(seed)),
+                width="content",
+            )
+            st.caption("Sand on a plate driven by this wave")
         wave_df = pd.DataFrame({"time_s": t, "random wave": y})
         st.line_chart(wave_df, x="time_s", y="random wave", height=260)
 
-        st.subheader("Reconstruction From Discovered Components")
+        chart_col, play_col, plate_col = st.columns([0.55, 0.15, 0.3], vertical_alignment="center")
+        with chart_col:
+            st.subheader("Reconstruction From Discovered Components")
+        with play_col:
+            if st.button("Play", key="play_reconstruction"):
+                st.audio(
+                    synthesize_waveform(reconstruction, sample_rate, max_frequency),
+                    format="audio/wav",
+                    autoplay=True,
+                )
+        with plate_col:
+            reconstruction_modes = [
+                (*frequency_to_plate_mode(row.frequency_hz, max_frequency), row.amplitude)
+                for row in selected.itertuples(index=False)
+            ]
+            st.pyplot(
+                render_sand_plate(reconstruction_modes, seed=int(seed) + 1),
+                width="content",
+            )
+            st.caption("Sand on a plate driven by the reconstruction")
         compare_df = pd.DataFrame(
             {
                 "time_s": t,
@@ -195,6 +353,33 @@ with tab_wave:
         y=[column for column in components_df.columns if column != "t"],
         height=300,
     )
+    st.caption(
+        "Frequencies here are too low to hear directly, so each button plays a pitch "
+        "scaled into the audible range (louder amplitude = louder tone, lower Hz = lower pitch)."
+    )
+    for rank, row in enumerate(selected.itertuples(index=False), start=1):
+        label = f"{rank}: {row.frequency_hz:.0f} Hz"
+        wave_col, play_col, plate_col = st.columns([0.5, 0.2, 0.3], vertical_alignment="center")
+        with wave_col:
+            st.write(
+                f"**{label}** — amplitude {row.amplitude:.2f}, phase {row.phase_rad:.2f} rad"
+            )
+        with play_col:
+            if st.button("Play", key=f"play_component_{rank}"):
+                audible_hz = audible_frequency_for(row.frequency_hz, max_frequency)
+                audio_bytes = synthesize_tone(
+                    frequency_hz=row.frequency_hz,
+                    amplitude=row.amplitude,
+                    phase_rad=row.phase_rad,
+                    audible_hz=audible_hz,
+                )
+                st.audio(audio_bytes, format="audio/wav", autoplay=True)
+        with plate_col:
+            mode = frequency_to_plate_mode(row.frequency_hz, max_frequency)
+            st.pyplot(
+                render_sand_plate([(*mode, row.amplitude)], seed=int(seed) + rank),
+                width="content",
+            )
 
 with tab_formula:
     st.subheader("Idea")
